@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>图片二维码识别</title>
+        <!-- <script src="https://cdn.bootcss.com/jquery/3.4.1/jquery.min.js"></script> -->
+        <script src="jquery-3.0.0.min.js"></script>
+        <!-- <script src="https://cozmo.github.io/jsQR/jsQR.js"></script> -->
+        <script src="jsQR.js"></script>
+        <script src="tool.js"></script>
+        
+    </head>
+    <body>
+        <h6 style="color: blue;">识别单个二维码：</h6>
+        <span lan_id="bc">选择图片</span>
+        <input type="file"  id="pictureChange"/>
+        <div>
+            <h5>识别结果：</h5>
+            <ul id="result1"></ul>
+        </div>
+        <br/>
+        <hr>
+        <h6 style="color: blue;">批量识别二维码：</h6>
+        <p style="font-size: smaller">二维码目录，请把二维码复制到auto目录下的子目录，如'auto/a'</p>
+        <span class="red-key">资源目录：</span>
+        <input type="text" id="mydir" placeholder="目录（必填）" value="auto/a">
+        <p style="font-size: smaller">单图识别时长，单位‘秒’。请填写数字1-10，默认3秒。由电脑性能、图片质量决定，填写1秒很可能识别失败。</p>
+        <span class="blue-key">识别时长：</span>
+        <input type="text" id="duration" placeholder="时长（必填）" value="3">
+        <p style="font-size: smaller">识别内容抽取-提取字段。填0时返回原始内容。如果是url，填写key（英文逗号隔开）获取对应的value</p>
+        <p style="font-size: smaller">例如，http//:testurl?id=1&code=101，填写"id,code"可以得到对应的值"1,101"</p>
+        <p style="font-size: smaller">也可以填写"0,id"可以得到对应的值"http//:testurl?id=1&code=101,1"</p>
+        <span class="blue-key">提取字段：</span>
+        <input type="text" id="keys" placeholder="必填" value="0">
+        <p style="font-size: smaller">结果排序字段：'0'-不排序，'1'-按文件名升序, '2'-按内容升序； 填url的key，如'id',或'code'等等，只能填一个值</p>
+        <span class="blue-key">排序字段：</span>
+        <input type="text" id="sortKey" placeholder="" value="1">
+        <p></p>
+
+        <button type="button" onclick="clickGo(this)">开始识别 - GO</button>
+        <p></p>
+        <!-- <image id='img' style="width:200px;height:200px;"></image> -->
+        <div>
+            <h5>识别结果：</h5>
+            <ul id="result2"></ul>
+        </div>
+    </body>
+    <script type="text/javascript">
+        $("body").append('<canvas id="qrcanvas" style="display:none;"></canvas>')
+        // 导入文件，转base64
+        $("#pictureChange").change(function (e) {
+            var file = e.target.files[0];
+            console.log(file)
+            if(window.FileReader) {
+                var fr = new FileReader();
+                fr.readAsDataURL(file);
+                fr.onloadend = function(e) {
+                    var base64Data = e.target.result;
+                    base64ToqR(base64Data, file.name, 1)
+                }
+            }
+        })
+        // 识别二维码
+        function base64ToqR(data, name, atPlace) {
+            var c = document.getElementById("qrcanvas");
+            var ctx = c.getContext("2d");
+     
+            var img = new Image();
+            img.src = data;
+            img.onload = function() {
+                $("#qrcanvas").attr("width",img.width)
+                $("#qrcanvas").attr("height",img.height)
+                ctx.drawImage(img, 0, 0, img.width, img.height);
+                var imageData = ctx.getImageData(0, 0, img.width, img.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
+                if(code){
+                    showCode(code.data, name, atPlace)
+                }else{
+                    // alert("识别错误")
+                    if (_failedlsplates) {
+                        _failedlsplates = _failedlsplates + '\n'
+                    }
+                    _failedlsplates = _failedlsplates + name
+                    console.log('*************************************** failed: ' + name)
+                    _failedCount++
+                }
+            };
+        }
+        // atPlace: 1:在result1显示，2:在result2显示
+        function showCode(code, name, atPlace){
+            let elementid = 'result' + atPlace
+            // document.getElementById(elementid).append("<li>"+ name + '：' +code+"</li>")
+            $("#" + elementid).append("<li>"+ name + '：' +code+"</li>")
+            var arr = code.split('=')
+            const id = arr.pop()
+            var name0 = name.replace('.jpg', '')
+            var name0 = name0.replace('.png', '')
+            let result = {name: name0, content: code}
+            
+            if (_keysStr != '0') {
+                let kvObjs = getRequests(code)
+                console.log(kvObjs)
+                let keys = _keysStr.split(',')
+                for (var i = 0; i < keys.length; i++) {
+                    let key = keys[i]
+                    if (kvObjs[key]) {
+                        result[key] = kvObjs[key]
+                    }
+                }
+            }
+
+            // ids = ids + '\n' + name0 + ',' + code
+            console.log('识别成功-------，内容：' + name0)
+            _recognizedResults.push(result)
+        }
+
+        // 获取目录下文件名
+        function getDirFileNames(adir) {
+            $.ajax({
+                url: adir, //目标目录路径
+                success: function (data) {
+                    // console.log(typeof(data))  // string
+                    // console.log(data)   // html 文档
+                    var sarr = data.split('<script>')
+                    console.log('工作目录下包含以下文件：')
+                    for (var i = sarr.length - 1; i >= 0; i--) {
+                        let astr = sarr[i]
+                        if (astr.indexOf('addRow') == 0) {
+                            // console.log(astr)
+                            let bstr = astr.replace('addRow(', '')
+                            let cstr = bstr.split(',')[0].replace(/"/g, '')
+                            console.log(cstr)
+                            fileNames.push(cstr)
+                        }
+                    }
+                    // console.log('------------------------------------')
+                    console.log('------------------ 开始识别 ------------------')
+                    startLoop()
+                }
+            })
+        }
+        
+        var fileNames = []
+        var _recognizedResults = []
+        var _theDir = ''         // 目录地址
+        var _keysStr = ''        // 提取字段
+        var _sortKey = ''        // 排序字段
+        
+        var _failedlsplates = '' // 识别失败的车牌号
+        var _count = 1
+        var _failedCount = 0 // 识别失败数量
+        var _isProcess = false   // 是否正在识别
+        function reset() {
+            fileNames = []
+            _recognizedResults = []
+            _theDir = ''
+            _keysStr = ''
+            _sortKey = ''
+
+            _failedlsplates = ''
+            _count = 1
+            _failedCount = 0
+            console.clear()
+            document.getElementById("result1").innerHTML = ""
+            document.getElementById("result2").innerHTML = ""
+        }
+
+         function clickGo(argument) {
+            if (_isProcess) {
+                // alert('识别中..，请勿重复点击')   // 阻塞进程。。。。
+                console.log('识别中..，请勿重复点击。')
+                return
+            }
+            reset()
+            _theDir = document.getElementById("mydir").value
+            console.log('输入的目录为： ' + _theDir)
+            _keysStr = document.getElementById("keys").value
+            _sortKey = document.getElementById("sortKey").value
+            if (_sortKey && _sortKey != 1 && _keysStr.indexOf(_sortKey) == -1) {
+                alert('排序字段必须包含于提取字段')
+                return
+            }
+            getDirFileNames(_theDir);
+            return
+            // body...
+            // const url = 'E:\Jack\temp\韶关车牌WX0003.jpg'
+            
+        }
+
+
+        function startLoop() {
+            _count = 1
+            _failedCount = 0
+            _isProcess = true
+            loop()
+        }
+
+        /* 循环（自己回头调自己），每次识别间隔3秒（因为识别二维码需要用到同一个 canvas 画布，所以必须等上一个识别结束再开始下一个识别。
+           我电脑每次识别差不多1-2秒，为了安全设置成3秒。具体间隔根据电脑性能设置。
+        */
+        function loop() {
+            // body...
+            let durationStr = document.getElementById("duration").value
+            let s = Number(durationStr)
+            let durationS = 3
+            if (s && s > 0 && s < 11) {
+               durationS = s
+            }
+            setTimeout(function (argument) {
+                // body...
+                if(_count <= fileNames.length) {
+                    let url = _theDir + '/' + fileNames[_count - 1]
+                    console.log('url = ' + url)
+                    doRecognizeQRCodeImage(url)
+                    loop()
+                }else {
+                   _count = 1
+                   _isProcess = false
+                   console.log('============   Completed   =============')
+                   console.log('%c %s','font-weight: bolder;color:blue;','识别成功次数：' + _recognizedResults.length)
+                    console.log('识别成功内容：')
+                    console.log('===========================================================================')
+                    // console.log(ids)
+                    sortResult()
+                    console.log('%c %s','background-color:green;font-weight: bolder;color:#fff;',getResultStr())
+                    console.log('%c %s','font-weight: bolder;color:red;','识别失败：' + _failedCount + '次：')
+                    console.log('%c %s','background-color:red;font-weight: bolder;color:white;',_failedlsplates)
+                }
+                _count++
+            }, durationS*1000)
+        }
+
+        async function doRecognizeQRCodeImage(localImageUrl) {
+            // body...
+            var components = localImageUrl.split('/')
+            const name = components.pop()
+            // console.log('name = ' + name)
+            const url = localImageUrl
+            const file = await getFileFromUrl(url, name)
+            // console.log(file)
+            if(window.FileReader) {
+                var fr = new FileReader();
+                fr.readAsDataURL(file);
+                fr.onloadend = function(e) {
+                    var base64Data = e.target.result;
+                    var image = new Image()
+                    image.src = base64Data // 设置image的地址为base64的地址
+                    image.onload = () => { // 图片加载完成后才能进行压缩处理，从而转换为base64 进行赋值
+                        let width = image.width // 图片宽度
+                        let height = image.height
+                        base64ToqR(base64Data, name, 2)
+                        // let dataUrl = compress(image, width, height, 0.3)
+                        // document.getElementById("img").src = dataUrl
+                        // base64ToqR(dataUrl, name)
+                   }
+                }
+            }
+        }
+        // 返回url的{key:value}对象
+        function getRequests(urlStr) {
+            if (typeof urlStr == "undefined") {
+                var url = decodeURI(location.search); //获取url中"?"符后的字符串
+            } else {
+                var url = "?" + urlStr.split("?")[1];
+            }
+            var theRequest = new Object();
+            if (url.indexOf("?") != -1) {
+                var str = url.substr(1);
+                strs = str.split("&");
+                for (var i = 0; i < strs.length; i++) {
+                    theRequest[strs[i].split("=")[0]] = decodeURI(strs[i].split("=")[1]);
+                }
+            }
+            return theRequest;
+        }
+        // 排序字段：'0'-不排序，'1'-按文件名升序, '2'-按内容升序； 填url的key，如'id',或'code'等等，只能填一个值
+        function sortResult() {
+            if (_sortKey == '0' || _sortKey.trim() == '') {
+                console.log('不排序')
+            }else {
+                 console.log("排序字段 == " + _sortKey)
+                if (_sortKey == '1') {
+                    _recognizedResults = _recognizedResults.sort((a,b) => {
+                        // console.log(a.name + ', ' + b.name)
+                        return a.name.localeCompare(b.name)
+                    })
+                }else if(_sortKey == '2'){
+                    _recognizedResults = _recognizedResults.sort((a,b) => {
+                        // console.log(a.content + ', ' + b.content)
+                        return a.content.localeCompare(b.content)
+                    })
+                }else {
+                    _recognizedResults = _recognizedResults.sort((a,b) => {
+                        // console.log(a[_sortKey] + ', ' + b[_sortKey])
+                        if (typeof(a[_sortKey]) == 'number') {
+                            return a[_sortKey] - b[_sortKey]
+                        }else {
+                            return a[_sortKey].localeCompare(b[_sortKey])
+                        }
+                        
+                    })
+                }
+                // console.log('sort end ...')
+            }
+        }
+        function getResultStr() {
+            let str = ''
+            for (var i = 0; i < _recognizedResults.length; i++) {
+                let result = _recognizedResults[i]
+                if (i > 0) {
+                    str = str + '\n'
+                }
+                str = str + result.name + ','
+                // keys: 0 || key
+                let keys = _keysStr.split(',')
+                for (var j = 0; j < keys.length; j++) {
+                    let key = keys[j]
+                    if (key == '0') {
+                        str = str + result.content
+                    }else {
+                        str = str + result[key]
+                    }
+                    if (j != keys.length - 1) {
+                        str = str + ','
+                    }
+                }
+                
+            }
+            return str;
+        }
+
+// ————————————————
+// 版权声明：本文为CSDN博主「willingtolove」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
+// 原文链接：https://blog.csdn.net/willingtolove/article/details/94758092
+
+        function compress (img, width, height, ratio) {
+            let canvas, ctx, img64;
+            canvas = document.getElementById("qrcanvas");
+            canvas.width = width;
+            canvas.height = height;
+            ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, width, height);
+            img64 = canvas.toDataURL("image/jpeg", ratio);
+            return img64;
+        }
+    </script>
+    <style type="text/css">
+    
+    .blue-key {
+        color: blue;
+        font-size: smaller;
+    }
+    .red-key {
+        color: red;
+        font-size: smaller;
+    }
+
+    </style>
+</html>
